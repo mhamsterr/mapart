@@ -23,6 +23,8 @@ var optionValue_dithering;
 var optionValue_dithering_propagation_red;
 var optionValue_dithering_propagation_green;
 var optionValue_dithering_propagation_blue;
+var zoneMask = null; // Uint8Array (one entry per pixel) or null; see zones.js
+var zoneDitherSettings = []; // indexed by zoneMask value; null = use the global dithering settings
 
 var colourSetsToUse = []; // colourSetIds and shades to use in map
 var exactColourCache = new Map(); // for mapping RGB that exactly matches in coloursJSON to colourSetId and tone
@@ -568,6 +570,59 @@ function colourSetIdAndToneToRGB(colourSetId, tone) {
   return coloursJSON[colourSetId]["tonesRGB"][tone];
 }
 
+function buildDitherProfile(ditherUniqueId, propagationRed, propagationGreen, propagationBlue) {
+  const method = DitherMethods[Object.keys(DitherMethods).find((ditherMethodKey) => DitherMethods[ditherMethodKey].uniqueId === ditherUniqueId)];
+  return {
+    method: method,
+    matrix: method.ditherMatrix, // undefined for DitherMethods.None
+    divisor: method.ditherDivisor, // only defined for error diffusion methods
+    propagationRed: propagationRed,
+    propagationGreen: propagationGreen,
+    propagationBlue: propagationBlue,
+  };
+}
+
+// profile 0 = global dithering settings; profile n = settings of the zone with zoneMask value n
+function buildDitherProfiles() {
+  const globalProfile = buildDitherProfile(
+    optionValue_dithering,
+    optionValue_dithering_propagation_red,
+    optionValue_dithering_propagation_green,
+    optionValue_dithering_propagation_blue
+  );
+  const profiles = [globalProfile];
+  for (let zoneId = 1; zoneId < zoneDitherSettings.length; zoneId++) {
+    const settings = zoneDitherSettings[zoneId];
+    profiles.push(
+      settings ? buildDitherProfile(settings.dithering, settings.propagationRed, settings.propagationGreen, settings.propagationBlue) : globalProfile
+    );
+  }
+  return profiles;
+}
+
+// Same weights as the unrolled error diffusion in getMapartImageDataAndMaterials, but error is only
+// passed on to pixels that belong to the same zone, so a zone's dithering never bleeds into its surroundings.
+function diffuseErrorWithinZone(data, x, y, width, height, matrix, divisor, quantError, zoneId) {
+  for (let row = 0; row < 3; row++) {
+    const ny = y + row;
+    if (ny >= height) break;
+    for (let col = 0; col < 5; col++) {
+      const dx = col - 2;
+      if (row === 0 && dx <= 0) continue;
+      const nx = x + dx;
+      if (nx < 0 || nx >= width) continue;
+      const neighbourPixel = ny * width + nx;
+      if (zoneMask[neighbourPixel] !== zoneId) continue;
+      const weight = matrix[row][col] / divisor;
+      if (weight === 0) continue;
+      const index = neighbourPixel * 4;
+      data[index] += quantError[0] * weight;
+      data[index + 1] += quantError[1] * weight;
+      data[index + 2] += quantError[2] * weight;
+    }
+  }
+}
+
 function getMapartImageDataAndMaterials() {
   for (let y = 0; y < optionValue_mapSize_y; y++) {
     let mapsRowToAdd = [];
@@ -593,40 +648,18 @@ function getMapartImageDataAndMaterials() {
     );
   }
 
-  let ditherMatrix;
-  let divisor;
-  const chosenDitherMethod =
-    DitherMethods[Object.keys(DitherMethods).find((ditherMethodKey) => DitherMethods[ditherMethodKey].uniqueId === optionValue_dithering)];
-  if (chosenDitherMethod.uniqueId !== DitherMethods.None.uniqueId) {
-    ditherMatrix = chosenDitherMethod.ditherMatrix;
-  }
-  if (
-    [
-      DitherMethods.FloydSteinberg.uniqueId,
-      DitherMethods.FloydSteinberg_20.uniqueId,
-      DitherMethods.FloydSteinberg_24.uniqueId,
-      DitherMethods.Atkinson.uniqueId,
-      DitherMethods.Atkinson_6.uniqueId,
-      DitherMethods.Atkinson_10.uniqueId,
-      DitherMethods.Atkinson_12.uniqueId,
-      DitherMethods.SierraFilterLite.uniqueId,
-      DitherMethods.Fan.uniqueId,
-      DitherMethods.ShiauFan.uniqueId,
-      DitherMethods.ShiauFan2.uniqueId,
-      DitherMethods.JarvisJudiceNinke.uniqueId,
-      DitherMethods.Stucki.uniqueId,
-      DitherMethods.Burkes.uniqueId,
-      DitherMethods.Sierra.uniqueId,
-      DitherMethods.SierraTworow.uniqueId,
-    ].includes(chosenDitherMethod.uniqueId)
-  ) {
-    divisor = chosenDitherMethod.ditherDivisor;
-  }
+  const ditherProfiles = buildDitherProfiles();
   for (let i = 0; i < canvasImageData.data.length; i += 4) {
     const indexR = i;
     const indexG = i + 1;
     const indexB = i + 2;
     const indexA = i + 3;
+
+    const zoneId = zoneMask !== null ? zoneMask[i / 4] : 0;
+    const ditherProfile = ditherProfiles[zoneId];
+    const chosenDitherMethod = ditherProfile.method;
+    const ditherMatrix = ditherProfile.matrix;
+    const divisor = ditherProfile.divisor;
 
     const multimapWidth = optionValue_mapSize_x * 128;
     const multimap_x = (i / 4) % multimapWidth;
@@ -716,12 +749,14 @@ function getMapartImageDataAndMaterials() {
           canvasImageData.data[indexB] = closestColour[2];
 
           const quant_error = [
-            (oldPixel[0] - closestColour[0]) * optionValue_dithering_propagation_red / 100.0,
-            (oldPixel[1] - closestColour[1]) * optionValue_dithering_propagation_green / 100.0,
-            (oldPixel[2] - closestColour[2]) * optionValue_dithering_propagation_blue / 100.0
+            (oldPixel[0] - closestColour[0]) * ditherProfile.propagationRed / 100.0,
+            (oldPixel[1] - closestColour[1]) * ditherProfile.propagationGreen / 100.0,
+            (oldPixel[2] - closestColour[2]) * ditherProfile.propagationBlue / 100.0
           ];
 
-          try {
+          if (zoneMask !== null) {
+            diffuseErrorWithinZone(canvasImageData.data, multimap_x, multimap_y, multimapWidth, optionValue_mapSize_y * 128, ditherMatrix, divisor, quant_error, zoneId);
+          } else try {
             // ditherMatrix [0][0...2] should always be zero, and can thus be skipped
             if (multimap_x + 1 < multimapWidth) {
               // Make sure to not carry over error from one side to the other
@@ -995,6 +1030,8 @@ onmessage = (e) => {
   optionValue_dithering_propagation_red = e.data.body.optionValue_dithering_propagation_red;
   optionValue_dithering_propagation_green = e.data.body.optionValue_dithering_propagation_green;
   optionValue_dithering_propagation_blue = e.data.body.optionValue_dithering_propagation_blue;
+  zoneMask = e.data.body.zoneMask || null;
+  zoneDitherSettings = e.data.body.zoneDitherSettings || [];
 
   resolveChosenColourMethod();
   setupColourSetsToUse();

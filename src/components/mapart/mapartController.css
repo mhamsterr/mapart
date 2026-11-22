@@ -190,3 +190,84 @@
   color: var(--beige-text, #f5deb3);
   opacity: 0.8;
 }
+
+/* ---------- Workspace layout: preview on the left half, collapsible boxes on the right ---------- */
+.mapartController.workspaceLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+
+.workspaceLeft {
+  position: sticky;
+  top: 2rem;
+  height: calc(100vh - 4rem);
+  min-width: 0;
+}
+
+.workspaceRight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.downloadBar {
+  min-width: 0;
+}
+
+/* the preview fills the whole left half; its size follows the window instead of the old fixed 808x637 box */
+.workspaceLeft .section.mapPreviewDiv,
+.workspaceLeft .section.mapPreviewDiv.autoZoomEnabled {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: auto;
+  transform: none !important;
+}
+
+.workspaceLeft .autoZoomContainer {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  margin-bottom: 10px;
+}
+
+.workspaceLeft .mapPreviewDiv > .dropZone:not(.autoZoomContainer) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* zones panel inside its collapsible box: the box already provides the frame */
+.collapsibleBody .mapZones {
+  margin-top: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  width: auto;
+  min-width: 0;
+}
+
+.mapZones .zoneHeader {
+  justify-content: flex-end;
+}
+
+/* narrow windows: stack, preview on top */
+@media (max-width: 1000px) {
+  .mapartController.workspaceLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspaceLeft {
+    position: static;
+    height: 75vh;
+  }
+}

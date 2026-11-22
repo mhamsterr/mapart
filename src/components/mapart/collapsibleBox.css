@@ -1,0 +1,58 @@
+.collapsibleBox {
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: var(--radius);
+  background: var(--bg-section);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  min-width: 0;
+}
+
+.collapsibleHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--beige-text);
+  font: inherit;
+  font-size: 1.2rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collapsibleHeader:hover {
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.collapseIndicator {
+  color: var(--accent, #d4af37);
+  font-size: 1rem;
+}
+
+.collapsibleBody {
+  padding: 0.2rem 1rem 1rem;
+  overflow-x: auto;
+}
+
+.collapsibleBox.collapsed .collapsibleBody {
+  display: none;
+}
+
+/* the components inside bring their own "section" frame and title: flatten them, the box provides both */
+.collapsibleBody .section,
+.collapsibleBody .section:hover {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+.collapsibleBody .section > h2:first-child {
+  display: none;
+}

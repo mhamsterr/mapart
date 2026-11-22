@@ -162,3 +162,251 @@
   opacity: 0.7;
   transform: scale(0.95);
 }
+
+/* ---------- Tool zones ---------- */
+.zoneOverlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.zoneOverlay.drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mapZones {
+  margin-top: 15px;
+  padding: 10px;
+  /* width 0 + min-width 100%: fills the preview box but never makes it wider or narrower,
+     so the settings block next to the preview doesn't jump around when the panel's content changes */
+  width: 0;
+  min-width: 100%;
+  background-color: #201c14;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+  color: #e0debc;
+}
+
+.mapZones .zoneHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mapZones .zoneHint {
+  display: block;
+  margin: 6px 0;
+  opacity: 0.8;
+}
+
+.mapZones .zoneButton {
+  cursor: pointer;
+}
+
+.mapZones .zoneButton.active {
+  background-color: #d4af37;
+  color: #201c14;
+}
+
+.mapZones .zoneList {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.mapZones .zoneList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.mapZones .zoneList li.selected {
+  border-color: #d4af37;
+  background-color: rgba(212, 175, 55, 0.12);
+}
+
+.mapZones .zoneName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapZones .zoneBadges span {
+  margin-left: 4px;
+}
+
+.mapZones .zoneDelete {
+  cursor: pointer;
+}
+
+.mapZones .zoneEditor {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.mapZones .zoneRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.mapZones .zoneRow > span:first-child {
+  min-width: 8em;
+}
+
+.mapZones .zoneRow input[type="range"] {
+  flex: 1;
+}
+
+.mapZones .zoneValue {
+  min-width: 2.5em;
+  text-align: right;
+}
+
+.mapZones .zoneRect {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.mapZones .zoneRectInput {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  font-size: 0.85em;
+}
+
+.mapZones .zoneRectInput input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mapZones .zoneOverride {
+  display: block;
+  margin-top: 8px;
+}
+
+.mapZones .zoneOverrideBody {
+  margin-left: 1.4em;
+}
+
+.mapZones .zoneList li.dragOver {
+  box-shadow: 0 -2px 0 0 #d4af37;
+}
+
+.mapZones .zoneList li.dragging {
+  opacity: 0.4;
+}
+
+.mapZones .zoneList li[draggable="true"] {
+  cursor: grab;
+}
+
+.mapZones .zoneGrip {
+  opacity: 0.6;
+  user-select: none;
+}
+
+.mapZones .zoneMove {
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.mapZones .zoneNameInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.zoneOverlayCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.zoneOverlay.tool-select.drawing {
+  cursor: pointer;
+}
+
+.zoneLabel {
+  position: absolute;
+  padding: 0 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  font-size: 11px;
+  pointer-events: none;
+  color: #201c14;
+  background-color: rgba(224, 222, 188, 0.9);
+}
+
+.zoneLabel.selected {
+  background-color: #d4af37;
+}
+
+.mapZones .zoneHeaderButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.mapZones .zoneToolbar {
+  margin: 6px 0;
+  padding: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 3px;
+}
+
+.mapZones .zoneTools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.mapZones .zoneToolbar .zoneButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mapZones .zoneEmpty {
+  opacity: 0.6;
+}
+
+/* inputs in a row fill the rest of the row instead of keeping the browser's default width */
+.mapZones .zoneRow input[type="text"],
+.mapZones .zoneRow select {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mapZones .zoneRowName > span:first-child {
+  min-width: 0;
+}
+
+.mapResolutionAndZoom .previewActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copyPreviewButton {
+  cursor: pointer;
+}
+
+.copyPreviewButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

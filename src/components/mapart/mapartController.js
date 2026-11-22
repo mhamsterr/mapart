@@ -20,6 +20,10 @@ import DitherMethods from "./json/ditherMethods.json";
 import MapModes from "./json/mapModes.json";
 import SupportedVersions from "./json/supportedVersions.json";
 import WhereSupportBlocksModes from "./json/whereSupportBlocksModes.json";
+import { MAX_ZONES, createZone } from "./zones";
+import { getZoneTransform } from "./cropTransform";
+import CollapsibleBox from "./collapsibleBox";
+import MapZones from "./mapZones";
 
 import IMG_Upload from "../../images/upload.png";
 
@@ -126,8 +130,18 @@ class MapartController extends Component {
     preProcessingValue_saturation: 100,
     preProcessingValue_backgroundColourSelect: BackgroundColourModes.OFF.uniqueId,
     preProcessingValue_backgroundColour: "#151515",
+    zones: [], // rectangular tool zones with per-zone setting overrides, see zones.js
+    selectedZoneId: null,
+    zoneDrawMode: false,
+    zoneTool: "rect", // select | rect | lasso | brush | wand
+    zoneEditMode: "add", // add | subtract
+    zoneBrushSize: 3, // diameter in blocks
+    zoneWandTolerance: 15,
+    zoneWandContiguous: true,
+    zoneWandRespectEdges: true,
+    nextZoneId: 1,
     optionValue_extras_moreStaircasingOptions: false,
-    optionValue_autoZoom: false,
+    optionValue_autoZoom: true,
     optionValue_image2map: false, // New option for automatic map size calculation
     uploadedImage: null,
     uploadedImage_baseFilename: null,
@@ -492,6 +506,81 @@ class MapartController extends Component {
 
   setOption_SupportBlock = (text) => {
     this.setState({ optionValue_supportBlock: text });
+  };
+
+  zoneDefaults = (state) => ({
+    brightness: state.preProcessingValue_brightness,
+    contrast: state.preProcessingValue_contrast,
+    saturation: state.preProcessingValue_saturation,
+    dithering: state.optionValue_dithering,
+    ditheringPropagationRed: state.optionValue_dithering_propagation_red,
+    ditheringPropagationGreen: state.optionValue_dithering_propagation_green,
+    ditheringPropagationBlue: state.optionValue_dithering_propagation_blue,
+  });
+
+  // creates an empty zone and selects it
+  onZoneCreate = () => {
+    this.setState((prevState) => {
+      if (prevState.zones.length >= MAX_ZONES) return null;
+      const id = prevState.nextZoneId;
+      const zone = createZone(id, `${this.props.getLocaleString("ZONES/DEFAULT-NAME")} ${id}`, this.zoneDefaults(prevState));
+      return { zones: [...prevState.zones, zone], selectedZoneId: id, nextZoneId: id + 1 };
+    });
+  };
+
+  // adds (or subtracts) a shape to the selected zone; with no zone selected, "add" starts a new zone
+  onZoneApplyShape = (op) => {
+    this.setState((prevState) => {
+      const selected = prevState.zones.find((zone) => zone.id === prevState.selectedZoneId);
+      if (selected) {
+        return {
+          zones: prevState.zones.map((zone) => (zone === selected ? { ...zone, ops: [...zone.ops, op], shapeVersion: zone.shapeVersion + 1 } : zone)),
+        };
+      }
+      if (op.mode === "subtract" || prevState.zones.length >= MAX_ZONES) return null;
+      const id = prevState.nextZoneId;
+      const zone = createZone(id, `${this.props.getLocaleString("ZONES/DEFAULT-NAME")} ${id}`, this.zoneDefaults(prevState), [op]);
+      return { zones: [...prevState.zones, zone], selectedZoneId: id, nextZoneId: id + 1 };
+    });
+  };
+
+  onZoneToolSettingsChange = (patch) => {
+    this.setState(patch);
+  };
+
+  onZoneUpdate = (id, patch) => {
+    this.setState((prevState) => ({
+      zones: prevState.zones.map((zone) => (zone.id === id ? { ...zone, ...patch, ...("ops" in patch ? { shapeVersion: zone.shapeVersion + 1 } : {}) } : zone)),
+    }));
+  };
+
+  onZoneDelete = (id) => {
+    this.setState((prevState) => ({
+      zones: prevState.zones.filter((zone) => zone.id !== id),
+      selectedZoneId: prevState.selectedZoneId === id ? null : prevState.selectedZoneId,
+    }));
+  };
+
+  // moves the zone with this id to position newIndex in the list (later zones win where zones overlap)
+  onZoneMove = (id, newIndex) => {
+    this.setState((prevState) => {
+      const from = prevState.zones.findIndex((zone) => zone.id === id);
+      if (from === -1) return null;
+      const to = Math.max(0, Math.min(prevState.zones.length - 1, newIndex));
+      if (from === to) return null;
+      const zones = [...prevState.zones];
+      const [moved] = zones.splice(from, 1);
+      zones.splice(to, 0, moved);
+      return { zones };
+    });
+  };
+
+  onZoneSelect = (id) => {
+    this.setState({ selectedZoneId: id });
+  };
+
+  onZoneDrawModeToggle = () => {
+    this.setState((prevState) => ({ zoneDrawMode: !prevState.zoneDrawMode }));
   };
 
   onOptionChange_PreProcessingEnabled = () => {
@@ -1258,32 +1347,19 @@ if (typeof module !== 'undefined' && module.exports) {
       viewOnline_3D,
       showPaletteFormatModal,
     } = this.state;
+    // zones are anchored to the picture; this converts between picture fractions and map canvas pixels
+    const zoneTransform = getZoneTransform({
+      image: uploadedImage,
+      cropOff: optionValue_cropImage === CropModes.OFF.uniqueId,
+      mapSizeX: optionValue_mapSize_x,
+      mapSizeY: optionValue_mapSize_y,
+      zoom: optionValue_cropImage_zoom,
+      percentX: optionValue_cropImage_percent_x,
+      percentY: optionValue_cropImage_percent_y,
+    });
     return (
-      <div className="mapartController">
-        <BlockSelection
-          getLocaleString={getLocaleString}
-          coloursJSON={coloursJSON}
-          disabledTones={disabledTones}
-          onChangeColourSetBlock={this.handleChangeColourSetBlock}
-          onToggleColourTone={this.handleToggleColourTone}
-          optionValue_version={optionValue_version}
-          optionValue_modeNBTOrMapdat={optionValue_modeNBTOrMapdat}
-          optionValue_staircasing={optionValue_staircasing}
-          selectedBlocks={selectedBlocks}
-          presets={presets}
-          selectedPresetName={selectedPresetName}
-          canDeletePreset={this.canDeletePreset}
-          onPresetChange={this.handlePresetChange}
-          onDeletePreset={this.handleDeletePreset}
-          onSavePreset={this.handleSavePreset}
-          onExportPreset={this.handleExportPreset}
-          onImportPreset={this.handleImportPreset}
-          onGetPDNPaletteClicked={this.handleGetPDNPaletteClicked}
-          onGenerateColorScheme={this.handleGenerateColorScheme}
-          handleAddCustomBlock={this.handleAddCustomBlock}
-          handleDeleteCustomBlock={this.handleDeleteCustomBlock}
-        />
-        <div className="sectionsPreviewSettingsMaterials">
+      <div className="mapartController workspaceLayout">
+        <div className="workspaceLeft">
           <MapPreview
             getLocaleString={getLocaleString}
             coloursJSON={coloursJSON}
@@ -1315,11 +1391,70 @@ if (typeof module !== 'undefined' && module.exports) {
             preProcessingValue_backgroundColour={preProcessingValue_backgroundColour}
             optionValue_autoZoom={optionValue_autoZoom}
             uploadedImage={uploadedImage}
+            zones={this.state.zones}
+            selectedZoneId={this.state.selectedZoneId}
+            zoneDrawMode={this.state.zoneDrawMode}
+            zoneTool={this.state.zoneTool}
+            zoneEditMode={this.state.zoneEditMode}
+            zoneBrushSize={this.state.zoneBrushSize}
+            zoneWandTolerance={this.state.zoneWandTolerance}
+            zoneWandContiguous={this.state.zoneWandContiguous}
+            zoneWandRespectEdges={this.state.zoneWandRespectEdges}
+            onZoneToolSettingsChange={this.onZoneToolSettingsChange}
+            onZoneCreate={this.onZoneCreate}
+            onZoneApplyShape={this.onZoneApplyShape}
+            onZoneUpdate={this.onZoneUpdate}
+            onZoneDelete={this.onZoneDelete}
+            onZoneMove={this.onZoneMove}
+            onZoneSelect={this.onZoneSelect}
+            onZoneDrawModeToggle={this.onZoneDrawModeToggle}
             onFileDialogEvent={this.onFileDialogEvent}
             onGetMapMaterials={this.handleSetMapMaterials}
             onMapPreviewWorker_begin={this.onMapPreviewWorker_begin}
+            zoneTransform={zoneTransform}
           />
-          <div style={{ display: "block" }}>
+        </div>
+        <div className="workspaceRight">
+          <div className="downloadBar">
+            <GreenButtons
+              getLocaleString={getLocaleString}
+              coloursJSON={coloursJSON}
+              selectedBlocks={selectedBlocks}
+              optionValue_version={optionValue_version}
+              optionValue_modeNBTOrMapdat={optionValue_modeNBTOrMapdat}
+              optionValue_mapSize_x={optionValue_mapSize_x}
+              optionValue_mapSize_y={optionValue_mapSize_y}
+              optionValue_cropImage={optionValue_cropImage}
+              optionValue_cropImage_zoom={optionValue_cropImage_zoom}
+              optionValue_cropImage_percent_x={optionValue_cropImage_percent_x}
+              optionValue_cropImage_percent_y={optionValue_cropImage_percent_y}
+              optionValue_staircasing={optionValue_staircasing}
+              optionValue_whereSupportBlocks={optionValue_whereSupportBlocks}
+              optionValue_supportBlock={optionValue_supportBlock}
+              optionValue_transparency={optionValue_transparency}
+              optionValue_transparencyTolerance={optionValue_transparencyTolerance}
+              optionValue_mapdatFilenameUseId={optionValue_mapdatFilenameUseId}
+              optionValue_mapdatFilenameIdStart={optionValue_mapdatFilenameIdStart}
+              optionValue_betterColour={optionValue_betterColour}
+              optionValue_dithering={optionValue_dithering}
+              optionValue_dithering_propagation_red={optionValue_dithering_propagation_red}
+              optionValue_dithering_propagation_green={optionValue_dithering_propagation_green}
+              optionValue_dithering_propagation_blue={optionValue_dithering_propagation_blue}
+              optionValue_preprocessingEnabled={optionValue_preprocessingEnabled}
+              preProcessingValue_brightness={preProcessingValue_brightness}
+              preProcessingValue_contrast={preProcessingValue_contrast}
+              preProcessingValue_saturation={preProcessingValue_saturation}
+              preProcessingValue_backgroundColourSelect={preProcessingValue_backgroundColourSelect}
+              preProcessingValue_backgroundColour={preProcessingValue_backgroundColour}
+              uploadedImage={uploadedImage}
+              uploadedImage_baseFilename={uploadedImage_baseFilename}
+              currentMaterialsData={currentMaterialsData}
+              mapPreviewWorker_inProgress={mapPreviewWorker_inProgress}
+              downloadBlobFile={this.downloadBlobFile}
+              onGetViewOnlineNBT={this.onGetViewOnlineNBT}
+            />
+          </div>
+          <CollapsibleBox id="settings" title={getLocaleString("MAP-SETTINGS/TITLE")}>
             <MapSettings
               getLocaleString={getLocaleString}
               coloursJSON={coloursJSON}
@@ -1384,45 +1519,58 @@ if (typeof module !== 'undefined' && module.exports) {
               optionValue_image2map={optionValue_image2map}
               onOptionChange_image2map={this.onOptionChange_image2map}
             />
-            <GreenButtons
+          </CollapsibleBox>
+          <CollapsibleBox id="zones" title={getLocaleString("ZONES/TITLE")}>
+            <MapZones
               getLocaleString={getLocaleString}
-              coloursJSON={coloursJSON}
-              selectedBlocks={selectedBlocks}
-              optionValue_version={optionValue_version}
-              optionValue_modeNBTOrMapdat={optionValue_modeNBTOrMapdat}
-              optionValue_mapSize_x={optionValue_mapSize_x}
-              optionValue_mapSize_y={optionValue_mapSize_y}
-              optionValue_cropImage={optionValue_cropImage}
-              optionValue_cropImage_zoom={optionValue_cropImage_zoom}
-              optionValue_cropImage_percent_x={optionValue_cropImage_percent_x}
-              optionValue_cropImage_percent_y={optionValue_cropImage_percent_y}
-              optionValue_staircasing={optionValue_staircasing}
-              optionValue_whereSupportBlocks={optionValue_whereSupportBlocks}
-              optionValue_supportBlock={optionValue_supportBlock}
-              optionValue_transparency={optionValue_transparency}
-              optionValue_transparencyTolerance={optionValue_transparencyTolerance}
-              optionValue_mapdatFilenameUseId={optionValue_mapdatFilenameUseId}
-              optionValue_mapdatFilenameIdStart={optionValue_mapdatFilenameIdStart}
-              optionValue_betterColour={optionValue_betterColour}
-              optionValue_dithering={optionValue_dithering}
-              optionValue_dithering_propagation_red={optionValue_dithering_propagation_red}
-              optionValue_dithering_propagation_green={optionValue_dithering_propagation_green}
-              optionValue_dithering_propagation_blue={optionValue_dithering_propagation_blue}
-              optionValue_preprocessingEnabled={optionValue_preprocessingEnabled}
-              preProcessingValue_brightness={preProcessingValue_brightness}
-              preProcessingValue_contrast={preProcessingValue_contrast}
-              preProcessingValue_saturation={preProcessingValue_saturation}
-              preProcessingValue_backgroundColourSelect={preProcessingValue_backgroundColourSelect}
-              preProcessingValue_backgroundColour={preProcessingValue_backgroundColour}
-              uploadedImage={uploadedImage}
-              uploadedImage_baseFilename={uploadedImage_baseFilename}
-              currentMaterialsData={currentMaterialsData}
-              mapPreviewWorker_inProgress={mapPreviewWorker_inProgress}
-              downloadBlobFile={this.downloadBlobFile}
-              onGetViewOnlineNBT={this.onGetViewOnlineNBT}
+              zones={this.state.zones}
+              selectedZoneId={this.state.selectedZoneId}
+              zoneDrawMode={this.state.zoneDrawMode}
+              zoneTool={this.state.zoneTool}
+              zoneEditMode={this.state.zoneEditMode}
+              zoneBrushSize={this.state.zoneBrushSize}
+              zoneWandTolerance={this.state.zoneWandTolerance}
+              zoneWandContiguous={this.state.zoneWandContiguous}
+              zoneWandRespectEdges={this.state.zoneWandRespectEdges}
+              canvasWidth={128 * optionValue_mapSize_x}
+              canvasHeight={128 * optionValue_mapSize_y}
+              zoneTransform={zoneTransform}
+              onZoneToolSettingsChange={this.onZoneToolSettingsChange}
+              onZoneDrawModeToggle={this.onZoneDrawModeToggle}
+              onZoneCreate={this.onZoneCreate}
+              onZoneSelect={this.onZoneSelect}
+              onZoneUpdate={this.onZoneUpdate}
+              onZoneDelete={this.onZoneDelete}
+              onZoneMove={this.onZoneMove}
             />
-          </div>
+          </CollapsibleBox>
+          <CollapsibleBox id="blocks" title={getLocaleString("BLOCK-SELECTION/TITLE")} defaultCollapsed>
+        <BlockSelection
+          getLocaleString={getLocaleString}
+          coloursJSON={coloursJSON}
+          disabledTones={disabledTones}
+          onChangeColourSetBlock={this.handleChangeColourSetBlock}
+          onToggleColourTone={this.handleToggleColourTone}
+          optionValue_version={optionValue_version}
+          optionValue_modeNBTOrMapdat={optionValue_modeNBTOrMapdat}
+          optionValue_staircasing={optionValue_staircasing}
+          selectedBlocks={selectedBlocks}
+          presets={presets}
+          selectedPresetName={selectedPresetName}
+          canDeletePreset={this.canDeletePreset}
+          onPresetChange={this.handlePresetChange}
+          onDeletePreset={this.handleDeletePreset}
+          onSavePreset={this.handleSavePreset}
+          onExportPreset={this.handleExportPreset}
+          onImportPreset={this.handleImportPreset}
+          onGetPDNPaletteClicked={this.handleGetPDNPaletteClicked}
+          onGenerateColorScheme={this.handleGenerateColorScheme}
+          handleAddCustomBlock={this.handleAddCustomBlock}
+          handleDeleteCustomBlock={this.handleDeleteCustomBlock}
+        />
+          </CollapsibleBox>
           {optionValue_modeNBTOrMapdat === MapModes.SCHEMATIC_NBT.uniqueId ? (
+            <CollapsibleBox id="materials" title={getLocaleString("MATERIALS/TITLE")}>
             <Materials
               getLocaleString={getLocaleString}
               coloursJSON={coloursJSON}
@@ -1432,6 +1580,7 @@ if (typeof module !== 'undefined' && module.exports) {
               onChangeColourSetBlock={this.handleChangeColourSetBlock}
               onFileDialogEvent={this.onFileDialogEvent}
             />
+            </CollapsibleBox>
           ) : null}
         </div>
         {viewOnline_NBT !== null &&
