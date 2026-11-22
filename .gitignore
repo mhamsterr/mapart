@@ -13,3 +13,4 @@ __pycache__/
 /gitignore Extras
 
 *.nbt
+.DS_Store
